@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<meta name="viewport" content="width=device-width,initial-scale=1"/>
+	<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+	<meta charset="utf-8"/>
+	<title>Ray Tracing in One Weekend in WebGL</title>
+</head>
+<body>
+	<h1>Ray Tracing in One Weekend in WebGL</h1>
+	<canvas id="canvas" width="1280" height="720"></canvas>
+	<script id="vertex" type="x-shader/x-vertex">
+attribute vec4 position;
+
+void main(void)
+{
+	gl_Position = position;
+}
+	</script>
+	<script id="fragment" type="x-shader/x-fragment">
+precision mediump float;
+
+// canvasの幅
+uniform float width;
+// canvasの高さ
+uniform float height;
+
+void main(void)
+{
+	float u = gl_FragCoord.x / width;
+	float v = gl_FragCoord.y / height;
+
+	gl_FragColor = vec4(u, v, 0.0, 1.0);
+}
+	</script>
+	<script>
+var canvas = document.getElementById("canvas");
+var gl = canvas.getContext("webgl");
+
+// scriptタグのidとtypeとテキストからシェーダを生成
+function CreateShader(id)
+{
+	var src = document.getElementById(id);
+
+	var shader = null;
+	switch(src.type)
+	{
+	case "x-shader/x-vertex":
+		shader = gl.createShader(gl.VERTEX_SHADER);
+		break;
+	case "x-shader/x-fragment":
+		shader = gl.createShader(gl.FRAGMENT_SHADER);
+		break;
+	}
+
+	gl.shaderSource(shader, src.text);
+	gl.compileShader(shader);
+
+	if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+	{
+		console.log(gl.getShaderInfoLog(shader));
+		gl.deleteShader(shader);
+		return null;
+	}
+
+	return shader;
+}
+
+// 頂点シェーダおよびフラグメントシェーダが書かれたscriptタグのidからシェーダプログラムを生成
+function CreateProgram(vertex, fragment)
+{
+	var program = gl.createProgram();
+
+	gl.attachShader(program, CreateShader(vertex));
+	gl.attachShader(program, CreateShader(fragment));
+	gl.linkProgram(program);
+
+	if(!gl.getProgramParameter(program, gl.LINK_STATUS))
+	{
+		console.log(gl.getProgramInfoLog(program));
+		gl.deleteProgram(program);
+		return null;
+	}
+
+	return program;
+}
+
+// プログラムの設定
+var program = CreateProgram("vertex", "fragment");
+gl.useProgram(program);
+
+// 各種パラメータの取得
+var position = gl.getAttribLocation(program, "position");
+var width = gl.getUniformLocation(program, "width");
+var height = gl.getUniformLocation(program, "height");
+
+// canvasの幅と高さをフラグメントシェーダに通知
+gl.uniform1f(width, canvas.width);
+gl.uniform1f(height, canvas.height);
+
+// 頂点バッファの設定
+var vertices = new Float32Array([
+	-1.0,  1.0, 0.0, 1.0,
+	 1.0,  1.0, 0.0, 1.0,
+	 1.0, -1.0, 0.0, 1.0,
+	-1.0, -1.0, 0.0, 1.0
+]);
+var vertex_buffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
+gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+gl.vertexAttribPointer(position, 4, gl.FLOAT, false, 0, 0);
+gl.enableVertexAttribArray(position);
+
+// インデックスバッファの設定
+var indices = new Uint16Array([
+	0, 1, 2,
+	0, 2, 3
+]);
+var index_buffer = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+// 描画
+gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+	</script>
+	<div>
+		<a href="./index.html">目次に戻る</a>
+	</div>
+</body>
+</html>
