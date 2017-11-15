@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+	<meta name="viewport" content="width=device-width,initial-scale=1"/>
+	<meta http-equiv="X-UA-Compatible" content="IE=edge"/>
+	<meta charset="utf-8"/>
+	<title>Ray Tracing in One Weekend in WebGL</title>
+</head>
+<body>
+	<h1>Ray Tracing in One Weekend in WebGL</h1>
+	<canvas id="canvas" width="200" height="100"></canvas>
+	<script id="vertex" type="x-shader/x-vertex">
+attribute vec4 position;
+
+void main(void)
+{
+	gl_Position = position;
+}
+	</script>
+	<script id="fragment" type="x-shader/x-fragment">
+precision mediump float;
+
+// canvasの幅
+uniform float width;
+// canvasの高さ
+uniform float height;
+// アスペクト比の幅の値
+uniform float aspect_h;
+// アスペクト比の高さの値
+uniform float aspect_v;
+
+struct ray
+{
+	vec3 origin;
+	vec3 direction;
+};
+
+vec3 point_at_parameter(ray r, float t)
+{
+	return r.origin + t * r.direction;
+}
+
+struct sphere
+{
+	vec3 center;
+	float radius;
+};
+
+struct hit_record
+{
+	float t;
+	vec3 p;
+	vec3 normal;
+};
+
+bool hit_sphere(ray r, sphere s, float t_min, float t_max, out hit_record rec)
+{
+	vec3 oc = r.origin - s.center;
+
+	float a = dot(r.direction, r.direction);
+	float b = dot(oc, r.direction);
+	float c = dot(oc, oc) - s.radius * s.radius;
+	float discriminant = b * b - a * c;
+
+	if(discriminant > 0.0)
+	{
+		float t = (-b - sqrt(discriminant)) / a;
+		if(t <= t_min || t_max <= t)
+		{
+			t = (-b + sqrt(discriminant)) / a;
+		}
+
+		if(t <= t_min || t_max <= t)
+		{
+			return false;
+		}
+
+		rec.t = t;
+		rec.p = point_at_parameter(r, t);
+		rec.normal = (rec.p - s.center) / s.radius;
+
+		return true;
+	}
+
+	return false;
+}
+
+void main(void)
+{
+	vec3 lower_left_corner = vec3(-aspect_h, -aspect_v, -1.0);
+	vec3 horizontal = vec3(aspect_h * 2.0, 0.0, 0.0);
+	vec3 vertical = vec3(0.0, aspect_v * 2.0, 0.0);
+
+	vec2 uvs[9];
+	uvs[0] = vec2((gl_FragCoord.x - 0.5) / width, (gl_FragCoord.y - 0.5) / height);
+	uvs[1] = vec2((gl_FragCoord.x      ) / width, (gl_FragCoord.y - 0.5) / height);
+	uvs[2] = vec2((gl_FragCoord.x + 0.5) / width, (gl_FragCoord.y - 0.5) / height);
+	uvs[3] = vec2((gl_FragCoord.x - 0.5) / width, (gl_FragCoord.y      ) / height);
+	uvs[4] = vec2((gl_FragCoord.x      ) / width, (gl_FragCoord.y      ) / height);
+	uvs[5] = vec2((gl_FragCoord.x + 0.5) / width, (gl_FragCoord.y      ) / height);
+	uvs[6] = vec2((gl_FragCoord.x - 0.5) / width, (gl_FragCoord.y + 0.5) / height);
+	uvs[7] = vec2((gl_FragCoord.x      ) / width, (gl_FragCoord.y + 0.5) / height);
+	uvs[8] = vec2((gl_FragCoord.x + 0.5) / width, (gl_FragCoord.y + 0.5) / height);
+
+	ray rs[9];
+	rs[0] = ray(vec3(0.0), lower_left_corner + uvs[0].x * horizontal + uvs[0].y * vertical);
+	rs[1] = ray(vec3(0.0), lower_left_corner + uvs[1].x * horizontal + uvs[1].y * vertical);
+	rs[2] = ray(vec3(0.0), lower_left_corner + uvs[2].x * horizontal + uvs[2].y * vertical);
+	rs[3] = ray(vec3(0.0), lower_left_corner + uvs[3].x * horizontal + uvs[3].y * vertical);
+	rs[4] = ray(vec3(0.0), lower_left_corner + uvs[4].x * horizontal + uvs[4].y * vertical);
+	rs[5] = ray(vec3(0.0), lower_left_corner + uvs[5].x * horizontal + uvs[5].y * vertical);
+	rs[6] = ray(vec3(0.0), lower_left_corner + uvs[6].x * horizontal + uvs[6].y * vertical);
+	rs[7] = ray(vec3(0.0), lower_left_corner + uvs[7].x * horizontal + uvs[7].y * vertical);
+	rs[8] = ray(vec3(0.0), lower_left_corner + uvs[8].x * horizontal + uvs[8].y * vertical);
+
+	float u = gl_FragCoord.x / width;
+	float v = gl_FragCoord.y / height;
+
+	ray r = ray(vec3(0.0), lower_left_corner + u * horizontal + v * vertical);
+	vec3 unit_direction = normalize(r.direction);
+
+	sphere spheres[2];
+	spheres[0] = sphere(vec3(0.0, 0.0, -1.0), 0.5);
+	spheres[1] = sphere(vec3(0.0, -100.5, -1.0), 100.0);
+
+	vec3 color = vec3(0.0);
+	for(int r = 0; r < 9; ++r)
+	{
+		hit_record rec;
+
+		bool hit_anything = false;
+		float t_min = 0.0;
+		float t_max = pow(2.0, 10.0);
+
+		for(int i = 0; i < 2; ++i)
+		{
+			if(hit_sphere(rs[r], spheres[i], t_min, t_max, rec))
+			{
+				hit_anything = true;
+				t_max = rec.t;
+			}
+		}
+
+		if(hit_anything)
+		{
+			color += 0.5 * (rec.normal + vec3(1.0));
+		}
+		else
+		{
+			float t = 0.5 * (unit_direction.y + 1.0);
+			color += (1.0 - t) * vec3(1.0) + t * vec3(0.5, 0.7, 1.0);
+		}
+	}
+
+	gl_FragColor = vec4(color / 9.0, 1.0);
+}
+	</script>
+	<script>
+var canvas = document.getElementById("canvas");
+var gl = canvas.getContext("webgl");
+
+// scriptタグのidとtypeとテキストからシェーダを生成
+function CreateShader(id)
+{
+	var src = document.getElementById(id);
+
+	var shader = null;
+	switch(src.type)
+	{
+	case "x-shader/x-vertex":
+		shader = gl.createShader(gl.VERTEX_SHADER);
+		break;
+	case "x-shader/x-fragment":
+		shader = gl.createShader(gl.FRAGMENT_SHADER);
+		break;
+	}
+
+	gl.shaderSource(shader, src.text);
+	gl.compileShader(shader);
+
+	if(!gl.getShaderParameter(shader, gl.COMPILE_STATUS))
+	{
+		console.log(gl.getShaderInfoLog(shader));
+		gl.deleteShader(shader);
+		return null;
+	}
+
+	return shader;
+}
+
+// 頂点シェーダおよびフラグメントシェーダが書かれたscriptタグのidからシェーダプログラムを生成
+function CreateProgram(vertex, fragment)
+{
+	var program = gl.createProgram();
+
+	gl.attachShader(program, CreateShader(vertex));
+	gl.attachShader(program, CreateShader(fragment));
+	gl.linkProgram(program);
+
+	if(!gl.getProgramParameter(program, gl.LINK_STATUS))
+	{
+		console.log(gl.getProgramInfoLog(program));
+		gl.deleteProgram(program);
+		return null;
+	}
+
+	return program;
+}
+
+// 最大公約数(Greatest Common Diviser)の計算
+function gcd(m, n)
+{
+	if(n == 0)
+	{
+		return m;
+	}
+
+	return gcd(n, m % n);
+}
+
+// プログラムの設定
+var program = CreateProgram("vertex", "fragment");
+gl.useProgram(program);
+
+// 各種パラメータの取得
+var position = gl.getAttribLocation(program, "position");
+var width = gl.getUniformLocation(program, "width");
+var height = gl.getUniformLocation(program, "height");
+var aspect_h = gl.getUniformLocation(program, "aspect_h");
+var aspect_v = gl.getUniformLocation(program, "aspect_v");
+
+// canvasの幅と高さをフラグメントシェーダに通知
+gl.uniform1f(width, canvas.width);
+gl.uniform1f(height, canvas.height);
+
+var d = gcd(canvas.width, canvas.height);
+gl.uniform1f(aspect_h, canvas.width / d);
+gl.uniform1f(aspect_v, canvas.height / d);
+
+// 頂点バッファの設定
+var vertices = new Float32Array([
+	-1.0,  1.0, 0.0, 1.0,
+	 1.0,  1.0, 0.0, 1.0,
+	 1.0, -1.0, 0.0, 1.0,
+	-1.0, -1.0, 0.0, 1.0
+]);
+var vertex_buffer = gl.createBuffer();
+gl.bindBuffer(gl.ARRAY_BUFFER, vertex_buffer);
+gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
+gl.vertexAttribPointer(position, 4, gl.FLOAT, false, 0, 0);
+gl.enableVertexAttribArray(position);
+
+// インデックスバッファの設定
+var indices = new Uint16Array([
+	0, 1, 2,
+	0, 2, 3
+]);
+var index_buffer = gl.createBuffer();
+gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, index_buffer);
+gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+
+// 描画
+gl.drawElements(gl.TRIANGLES, indices.length, gl.UNSIGNED_SHORT, 0);
+	</script>
+	<div>
+		<a href="./index.html">目次に戻る</a>
+	</div>
+</body>
+</html>
